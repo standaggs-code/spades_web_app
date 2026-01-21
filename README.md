@@ -1,5 +1,7 @@
 ♠️ Spades Scorekeeper: Host Guide
+
 🚀 Getting Started
+
 Enter Names: Type all 4 player names in the setup screen.
 
 Pick First Dealer: Use the dropdown to select who starts with the cards.
