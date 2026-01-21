@@ -1,0 +1,172 @@
+/* --- 1. Variables & Dark Mode --- */
+:root {
+    --bg: #f4f7f6;
+    --card-bg: #ffffff;
+    --text: #2c3e50;
+    --text-secondary: #7f8c8d;
+    --border: #eee;
+    --accent: #3498db;
+    --success: #2ecc71;
+    --danger: #e74c3c;
+    --warning: #f39c12;
+    --shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+body.dark-mode {
+    --bg: #121212;
+    --card-bg: #1e1e1e;
+    --text: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --border: #333;
+    --accent: #5dade2;
+    --shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+/* --- 2. General Layout --- */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 20px;
+    transition: background-color 0.3s, color 0.3s;
+    display: flex;
+    justify-content: center;
+}
+
+#view-container {
+    width: 100%;
+    max-width: 500px;
+}
+
+/* --- 3. Components --- */
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+}
+
+h2, h3 {
+    margin-top: 0;
+    color: var(--text);
+}
+
+input, select {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text);
+    font-size: 1rem;
+}
+
+button {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 14px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 8px;
+    background-color: var(--accent);
+    color: white;
+    font-weight: bold;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+button:hover {
+    opacity: 0.9;
+}
+
+/* --- 4. Game Specifics --- */
+.team-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.score-display {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin: 10px 0;
+    color: var(--accent);
+}
+
+.bag-display {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.dealer-indicator {
+    color: var(--danger);
+    font-weight: bold;
+}
+
+/* --- 5. Tables (History & Stats) --- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th {
+    text-align: center;
+    padding: 10px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+td {
+    padding: 12px 5px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+}
+
+.history-success { color: var(--success); }
+.history-fail { color: var(--danger); }
+
+/* --- 6. Utilities --- */
+.flex-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.rule-pill {
+    background: var(--bg);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    border: 1px solid var(--border);
+}
+
+/* --- 7. Animations --- */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.card {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.rank-1 { background: linear-gradient(90deg, rgba(255,215,0,0.2), transparent); font-weight: bold; }
+.rank-2 { background: linear-gradient(90deg, rgba(192,192,192,0.2), transparent); }
+.rank-3 { background: linear-gradient(90deg, rgba(205,127,50,0.2), transparent); }
+
+.medal { margin-right: 5px; }
+.win-pct { font-size: 0.8rem; color: var(--text-secondary); }
