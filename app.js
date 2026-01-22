@@ -195,7 +195,7 @@ function render() {
             </div>
             <label>First Dealer:</label><select id="firstDealerSelect"><option value="-1">🎲 Randomize Dealer</option>${state.players.map((n, i) => `<option value="${i}">${n || `P${i+1}`}</option>`).join('')}</select>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:15px; padding:10px; background:rgba(0,0,0,0.03);">
-                <div>Goal: <select onchange="state.goal=parseInt(this.value)"><option value="300" ${state.goal==300?'selected':''}>30</option><option value="500" ${state.goal==500?'selected':''}>500</option></select></div>
+                <div>Goal: <select onchange="state.goal=parseInt(this.value)"><option value="300" ${state.goal==300?'selected':''}>300</option><option value="500" ${state.goal==500?'selected':''}>500</option></select></div>
                 <div>Bags: <select onchange="state.bagLimit=parseInt(this.value)"><option value="5" ${state.bagLimit==5?'selected':''}>5</option><option value="10" ${state.bagLimit==10?'selected':''}>10</option></select></div>
                 <div>Penalty: <select onchange="state.bagPenalty=parseInt(this.value)"><option value="50" ${state.bagPenalty==50?'selected':''}>50</option><option value="100" ${state.bagPenalty==100?'selected':''}>100</option></select></div>
                 <div>Set Out: <select onchange="state.setLimit=parseInt(this.value)"><option value="2" ${state.setLimit==2?'selected':''}>2</option><option value="3" ${state.setLimit==3?'selected':''}>3</option></select></div>
