@@ -136,12 +136,23 @@ window.startGame = () => {
 };
 
 window.submitHand = () => {
+    // 1. Grab the values
+    const t0Got = parseInt(document.getElementById('t0Got').value) || 0;
+    const t1Got = parseInt(document.getElementById('t1Got').value) || 0;
+
+    // 2. Error Check: Must equal 13
+    if (t0Got + t1Got !== 13) {
+        return alert(`⚠️ Error: Total tricks must equal 13. Currently: ${t0Got + t1Got}`);
+    }
+
+    // 3. Proceed with data collection if check passes
     const getData = (p) => ({
         bid: parseInt(document.getElementById(`${p}Bid`).value) || 0,
         teamGot: parseInt(document.getElementById(`${p}Got`).value) || 0,
         isNil: document.getElementById(`${p}Nil`).checked,
         nilGot: parseInt(document.getElementById(`${p}NilGot`).value) || 0
     });
+
     state.history.push({ t1: getData('t0'), t2: getData('t1') });
     calculateScores();
     render();
