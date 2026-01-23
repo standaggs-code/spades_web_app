@@ -1,19 +1,75 @@
 :root {
-    --bg: #f4f7f6; --card-bg: #ffffff; --text: #2c3e50; --border: #eee; --accent: #3498db; --success: #2ecc71; --danger: #e74c3c; --warning: #f39c12;
+    --bg: #f4f7f6;
+    --card-bg: #ffffff;
+    --text: #2c3e50;
+    --border: #eee;
+    --accent: #3498db;
+    --success: #2ecc71;
+    --danger: #e74c3c;
+    --warning: #f39c12;
+    --header-bg: #2c3e50; /* Match the PWA theme color */
 }
+
 body.dark-mode {
-    --bg: #121212; --card-bg: #1e1e1e; --text: #e0e0e0; --border: #333; --accent: #5dade2;
+    --bg: #121212;
+    --card-bg: #1e1e1e;
+    --text: #e0e0e0;
+    --border: #333;
+    --accent: #5dade2;
+    --header-bg: #000000;
 }
-body { font-family: sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; transition: 0.3s; }
-#view-container { width: 100%; max-width: 500px; }
-.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-input, select { box-sizing: border-box; width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); }
-button { cursor: pointer; border: none; border-radius: 8px; padding: 12px; font-weight: bold; background: var(--accent); color: white; width: 100%; margin-top: 10px; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+}
+
+#app-shell {
+    width: 100%;
+    max-width: 500px; /* Keeps it looking like a phone app on desktop */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* New Styles for your Title Bar */
+.app-bar {
+    background: var(--header-bg);
+    color: white;
+    padding: 15px;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.app-bar h1 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+#view-container {
+    padding: 20px;
+    flex: 1;
+}
+
+/* Keep your existing card/button styles below here... */
+.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+input, select { box-sizing: border-box; width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); font-size: 16px; }
+button { cursor: pointer; border: none; border-radius: 8px; padding: 12px; font-weight: bold; background: var(--accent); color: white; width: 100%; margin-top: 10px; font-size: 1rem; transition: 0.2s; }
+button:active { transform: scale(0.98); opacity: 0.9; }
 .flex-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-/* Fix for the Dark Mode button width */
 .flex-row button { width: auto !important; min-width: 45px; margin-top: 0; }
 .team-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .score-display { font-size: 2.5rem; font-weight: bold; margin: 10px 0; color: var(--accent); }
-table { width: 100%; border-collapse: collapse; margin-top: 10px; text-align: center; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; text-align: center; font-size: 0.9rem; }
 th, td { padding: 10px; border-bottom: 1px solid var(--border); }
-.rank-1 { background: rgba(255,215,0,0.1); }

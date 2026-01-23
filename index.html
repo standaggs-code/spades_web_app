@@ -2,22 +2,35 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Standaggs Spades Scorekeeper!</title>
+    <title>Standaggs Spades Scorekeeper</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
     <link rel="stylesheet" href="style.css">
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js')
+          .then(() => console.log('Service Worker Registered'))
+          .catch((err) => console.log('SW Failed', err));
+      }
+    </script>
 </head>
 <body>
-    <div id="app">
-        <header>
-            <h1>Check the Books!</h1>
-            <div id="game-info"></div>
+
+    <div id="app-shell">
+        <header class="app-bar">
+            <h1>♠️ Standaggs Spades Scorekeeper</h1>
         </header>
 
-        <main id="view-container">
-            </main>
-
-        <section id="history-log"></section>
+        <main id="view-container"></main>
     </div>
+
     <script src="app.js"></script>
 </body>
 </html>
