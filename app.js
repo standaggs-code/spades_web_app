@@ -6,7 +6,7 @@ const state = {
     view: initialState?.view || 'setup',
     players: initialState?.players || ['', '', '', ''],
     teamMode: initialState?.teamMode || 'random',
-    goal: initialState?.goal || 500,
+    goal: initialState?.goal || 300,
     nilValue: 100,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
@@ -26,60 +26,56 @@ const state = {
 if (state.darkMode) document.body.classList.add('dark-mode');
 const save = () => localStorage.setItem('spades_game_state', JSON.stringify(state));
 
-// --- 2. Helper Functions ---
-const getInitials = (namesArray) => {
-    return namesArray.map(n => 
-        n.trim().split(' ').map(part => part[0] ? part[0].toUpperCase() : '').join('')
-    ).join(' & ');
-};
+const getInitials = (namesArray) => namesArray.map(n => n.trim().split(' ').map(p => p[0] ? p[0].toUpperCase() : '').join('')).join(' & ');
 
-// --- 3. Career Stats ---
-function recordCareerStats() {
-    if (state.statsRecorded || !state.winner) return;
-    let career = JSON.parse(localStorage.getItem('spades_career_stats')) || {};
-    state.players.forEach(name => {
-        const n = name.trim(); if (!n) return;
-        if (!career[n]) career[n] = { wins: 0, games: 0, sets: 0 };
-        career[n].games++;
-    });
-    const winNames = state.winner.split(' & ');
-    winNames.forEach(n => { if (career[n.trim()]) career[n.trim()].wins++; });
-    state.teams.forEach(team => {
-        team.members.forEach(n => { if (career[n.trim()]) career[n.trim()].sets += team.setCount; });
-    });
-    localStorage.setItem('spades_career_stats', JSON.stringify(career));
-    state.statsRecorded = true; save();
-}
-
-window.clearAllStats = () => {
-    if (confirm("Delete ALL career records?")) {
-        localStorage.removeItem('spades_career_stats');
-        state.view = 'setup'; render();
-    }
-};
-
-// --- 4. Scoring Engine ---
+// --- 2. Scoring Engine ---
 function getTotalsAtStep(historyArray) {
-    let t = [{ score: 0, bags: 0, setCount: 0 }, { score: 0, bags: 0, setCount: 0 }];
+    let t = [
+        { score: 0, bags: 0, setCount: 0, penaltyThisRound: false, setThisRound: false }, 
+        { score: 0, bags: 0, setCount: 0, penaltyThisRound: false, setThisRound: false }
+    ];
+    
     historyArray.forEach(round => {
         const hands = [round.t1, round.t2];
         hands.forEach((hand, i) => {
-            const team = t[i]; const oppHand = hands[i === 0 ? 1 : 0];
-            let isSet = false;
+            const team = t[i]; 
+            const oppHand = hands[i === 0 ? 1 : 0];
+            team.penaltyThisRound = false;
+            team.setThisRound = false;
+
+            // Nil Calculation
             if (hand.isNil) {
                 if (hand.nilGot === 0) team.score += state.nilValue;
-                else { team.score -= state.nilValue; isSet = true; }
+                else { team.score -= state.nilValue; team.setCount++; team.setThisRound = true; }
             }
+
+            // Bid Calculation
             const tricks = hand.teamGot - (hand.isNil ? hand.nilGot : 0);
             if (hand.bid > 0) {
                 if (tricks >= hand.bid && !hand.reneg) {
                     const extras = tricks - hand.bid;
-                    if (oppHand.reneg) { team.score += (hand.bid * 10) + (extras * 10); } 
-                    else { team.score += (hand.bid * 10) + extras; team.bags += extras; }
-                } else { team.score -= (hand.bid * 10); isSet = true; }
-            } else if (!hand.isNil) { team.bags += tricks; }
-            if (isSet) { team.setCount++; }
-            if (team.bags >= state.bagLimit) { team.score -= state.bagPenalty; team.bags -= state.bagLimit; }
+                    if (oppHand.reneg) { 
+                        team.score += (hand.bid * 10) + (extras * 10); 
+                    } else { 
+                        team.score += (hand.bid * 10) + extras; 
+                        team.bags += extras; 
+                    }
+                } else { 
+                    team.score -= (hand.bid * 10); 
+                    team.setCount++; 
+                    team.setThisRound = true; 
+                }
+            } else if (!hand.isNil) { 
+                team.score += tricks; 
+                team.bags += tricks; 
+            }
+
+            // Bag Penalty
+            if (team.bags >= state.bagLimit) { 
+                team.score -= (state.bagPenalty + state.bagLimit); 
+                team.bags -= state.bagLimit;
+                team.penaltyThisRound = true;
+            }
         });
     });
     return t;
@@ -88,60 +84,63 @@ function getTotalsAtStep(historyArray) {
 function calculateScores() {
     const final = getTotalsAtStep(state.history);
     [0, 1].forEach(i => {
-        state.teams[i].score = final[i].score; state.teams[i].bags = final[i].bags; state.teams[i].setCount = final[i].setCount;
+        state.teams[i].score = final[i].score;
+        state.teams[i].bags = final[i].bags;
+        state.teams[i].setCount = final[i].setCount;
     });
+    
     state.winner = null;
     const t1N = state.teams[0].members.join(' & ');
     const t2N = state.teams[1].members.join(' & ');
-    if (state.teams[0].setCount >= state.setLimit) { state.winner = t2N; state.winReason = `${t1N} set limit.`; }
-    else if (state.teams[1].setCount >= state.setLimit) { state.winner = t1N; state.winReason = `${t2N} set limit.`; }
-    else if (state.teams[0].score >= state.goal) { state.winner = t1N; state.winReason = "Goal reached!"; }
-    else if (state.teams[1].score >= state.goal) { state.winner = t2N; state.winReason = "Goal reached!"; }
-    if (state.winner) recordCareerStats();
+    const s1 = state.teams[0].score;
+    const s2 = state.teams[1].score;
+
+    // A. Set Limit Check (Instant Loss)
+    if (state.teams[0].setCount >= state.setLimit) { state.winner = t2N; state.winReason = `${t1N} hit set limit.`; }
+    else if (state.teams[1].setCount >= state.setLimit) { state.winner = t1N; state.winReason = `${t2N} hit set limit.`; }
+    
+    // B. Goal Check (With Tie/Overtime Logic)
+    else if (s1 >= state.goal || s2 >= state.goal) {
+        if (s1 > s2) { state.winner = t1N; state.winReason = "Goal reached!"; }
+        else if (s2 > s1) { state.winner = t2N; state.winReason = "Goal reached!"; }
+        else { state.winner = null; } // Tie
+    }
+    
+    // Career Stats
+    if (state.winner && !state.statsRecorded) {
+        let career = JSON.parse(localStorage.getItem('spades_career_stats')) || {};
+        state.players.forEach(name => {
+            const n = name.trim(); if (!n) return;
+            if (!career[n]) career[n] = { wins: 0, games: 0, sets: 0 };
+            career[n].games++;
+        });
+        state.winner.split(' & ').forEach(n => { if (career[n.trim()]) career[n.trim()].wins++; });
+        state.teams.forEach(team => {
+            team.members.forEach(n => { if (career[n.trim()]) career[n.trim()].sets += team.setCount; });
+        });
+        localStorage.setItem('spades_career_stats', JSON.stringify(career));
+        state.statsRecorded = true;
+    }
     save();
 }
 
-// --- 5. User Actions ---
-window.toggleDarkMode = () => { state.darkMode = !state.darkMode; document.body.classList.toggle('dark-mode', state.darkMode); save(); };
-window.autoFillTricks = (val) => { 
-    const other = 13 - (parseInt(val) || 0); 
-    const target = document.getElementById('t1Got'); 
-    if (target) target.value = Math.max(0, Math.min(13, other)); 
-};
-
-window.startGame = () => {
-    if (state.players.some(p => !p.trim())) return alert("Names required");
-    if (state.history.length === 0) {
-        const sel = document.getElementById('firstDealerSelect');
-        const sVal = parseInt(sel.value);
-        let dName = sVal === -1 ? null : state.players[sVal];
-
-        if (state.teamMode === 'random') {
-            state.players = [...state.players].sort(() => Math.random() - 0.5);
-            state.teams[0].members = [state.players[0], state.players[2]];
-            state.teams[1].members = [state.players[1], state.players[3]];
-        } else {
-            state.teams[0].members = [state.players[0], state.players[1]];
-            state.teams[1].members = [state.players[2], state.players[3]];
-        }
-        state.dealerIndex = (sVal === -1) ? Math.floor(Math.random() * 4) : state.players.indexOf(dName);
-    }
-    state.view = 'play'; calculateScores(); render();
-};
-
+// --- 3. Interactions ---
 window.submitHand = () => {
-    let t0Got = parseInt(document.getElementById('t0Got').value) || 0;
-    let t1Got = parseInt(document.getElementById('t1Got').value) || 0;
+    let t0G = parseInt(document.getElementById('t0Got').value) || 0;
+    let t1G = parseInt(document.getElementById('t1Got').value) || 0;
+    if (t0G + t1G !== 13) return alert("Total tricks must equal 13.");
     const t0R = document.getElementById('t0Reneg').checked;
     const t1R = document.getElementById('t1Reneg').checked;
-    if (t0Got + t1Got !== 13) return alert("Total must be 13");
-    if (t0R) { let p = Math.min(t0Got, 3); t0Got -= p; t1Got += p; }
-    if (t1R) { let p = Math.min(t1Got, 3); t1Got -= p; t0Got += p; }
+    if (t0R) { t0G = Math.max(0, t0G - 3); t1G += 3; }
+    if (t1R) { t1G = Math.max(0, t1G - 3); t0G += 3; }
     const getData = (id, got, reneg) => ({
-        bid: parseInt(document.getElementById(`${id}Bid`).value) || 0, teamGot: got,
-        isNil: document.getElementById(`${id}Nil`).checked, nilGot: parseInt(document.getElementById(`${id}NilGot`).value) || 0, reneg: reneg
+        bid: parseInt(document.getElementById(`${id}Bid`).value) || 0, 
+        teamGot: got,
+        isNil: document.getElementById(`${id}Nil`).checked, 
+        nilGot: parseInt(document.getElementById(`${id}NilGot`).value) || 0, 
+        reneg: reneg
     });
-    state.history.push({ t1: getData('t0', t0Got, t0R), t2: getData('t1', t1Got, t1R) });
+    state.history.push({ t1: getData('t0', t0G, t0R), t2: getData('t1', t1G, t1R) });
     calculateScores(); render();
 };
 
@@ -152,76 +151,147 @@ window.exportGame = () => {
     const t2I = getInitials(state.teams[1].members);
     const now = new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
     
-    let txt = `♠️ SPADES SUMMARY (${now}) ♠️\n`;
-    txt += `⚔️ MATCHUP: ${t1Full} vs ${t2Full}\n`;
-    txt += `🏆 WINNER: ${state.winner}\n`;
-    txt += `📊 FINAL: ${state.teams[0].score} to ${state.teams[1].score}\n\n`;
-    txt += `ROUND-BY-ROUND (${t1I} | ${t2I}):\n`;
+    let txt = `♠️ SPADES SUMMARY (${now}) ♠️\n⚔️ MATCHUP: ${t1Full} vs ${t2Full}\n🏆 WINNER: ${state.winner}\n📊 FINAL: ${state.teams[0].score} to ${state.teams[1].score}\n\nHISTORY\n\t\t [${t1I}] | [${t2I}]\n`;
     
     state.history.forEach((h, i) => {
         const snap = getTotalsAtStep(state.history.slice(0, i + 1));
-        const r1 = h.t1.reneg ? "[🚩]" : ""; const r2 = h.t2.reneg ? "[🚩]" : "";
-        txt += `R${i+1}: ${t1I}: ${snap[0].score} (${h.t1.bid}/${h.t1.teamGot}${r1}) | ${t2I}: ${snap[1].score} (${h.t2.bid}/${h.t2.teamGot}${r2})\n`;    
+        const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "");
+        const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "");
+        txt += `R${i+1}: \t${snap[0].score}${p1} (${h.t1.bid}/${h.t1.teamGot}) | ${snap[1].score}${p2} (${h.t2.bid}/${h.t2.teamGot})\n`;
     });
+    
     txt += `\nGenerated by Standaggs Spades Scorekeeper \nhttps://standaggs-code.github.io/spades_web_app/`;
-    navigator.clipboard.writeText(txt); alert("It is Done!");
-
-
+    navigator.clipboard.writeText(txt); 
+    alert("It is Done!");
 };
 
-window.resetGame = () => { if(confirm("Reset current game?")) { state.view='setup'; state.history=[]; state.winner=null; state.statsRecorded=false; state.teams.forEach(t=>{t.score=0;t.bags=0;t.setCount=0;}); save(); render(); }};
+window.continueGame = () => {
+    state.winner = null; 
+    state.statsRecorded = false;
+    state.view = 'setup'; 
+    render();
+};
 
-// --- 6. Rendering ---
+window.updateRule = (key, val) => {
+    state[key] = val;
+    calculateScores(); 
+    render();
+};
+
+window.startGame = () => {
+    if (state.players.some(p => !p.trim())) return alert("Names required");
+    const sel = document.getElementById('firstDealerSelect');
+    const sVal = parseInt(sel.value);
+    const dName = sVal === -1 ? null : state.players[sVal];
+    if (state.teamMode === 'random') {
+        state.players = [...state.players].sort(() => Math.random() - 0.5);
+        state.teams[0].members = [state.players[0], state.players[2]];
+        state.teams[1].members = [state.players[1], state.players[3]];
+    } else {
+        state.teams[0].members = [state.players[0], state.players[1]];
+        state.teams[1].members = [state.players[2], state.players[3]];
+    }
+    state.dealerIndex = (sVal === -1) ? Math.floor(Math.random() * 4) : state.players.indexOf(dName);
+    state.view = 'play'; calculateScores(); render();
+};
+
+window.autoFillTricks = (val) => { 
+    const other = 13 - (parseInt(val) || 0); 
+    const target = document.getElementById('t1Got'); 
+    if (target) target.value = Math.max(0, Math.min(13, other)); 
+};
+
+window.resetGame = () => { 
+    if(confirm("Reset current game?")) { 
+        state.view='setup'; state.history=[]; state.winner=null; state.statsRecorded=false; 
+        state.teams.forEach(t=>{t.score=0;t.bags=0;t.setCount=0;}); 
+        save(); render(); 
+    }
+};
+
+// --- 4. Render Engine ---
 function render() {
     const container = document.getElementById('view-container'); if (!container) return;
+
     if (state.view === 'stats') {
         const career = JSON.parse(localStorage.getItem('spades_career_stats')) || {};
         const sorted = Object.entries(career).map(([name, d]) => ({ name, ...d, pct: d.games>0?(d.wins/d.games)*100:0 })).sort((a,b)=>b.pct-a.pct);
         container.innerHTML = `<div class="card"><h2>🏆 Leaderboard</h2><table><thead><tr><th>Player</th><th>Win %</th></tr></thead><tbody>${sorted.map(p=>`<tr><td>${p.name}</td><td>${p.pct.toFixed(1)}%</td></tr>`).join('')}</tbody></table><button onclick="state.view='setup';render()">Back</button></div>`;
         return;
     }
+
     if (state.winner) {
-        container.innerHTML = `<div class="card" style="text-align:center;"><h1>🏆 Winner!</h1><h2>${state.winner}</h2><p>${state.winReason}</p><button onclick="exportGame()">Copy Results</button><button onclick="resetGame()" style="margin-top:10px;">New Game</button></div>`;
+        container.innerHTML = `<div class="card" style="text-align:center;">
+            <h1>🏆 Winner!</h1><h2>${state.winner}</h2><p>${state.winReason}</p>
+            <button onclick="exportGame()">Copy Results</button>
+            <button onclick="window.continueGame()" style="background:#3498db; margin-top:10px;">Continue Game</button>
+            <button onclick="resetGame()" style="background:#e74c3c; margin-top:10px;">New Game</button>
+            <p style="font-size:0.7rem; color:#888; margin-top:15px;">Hit "Continue" to change goal/score.</p>
+        </div>`;
         return;
     }
+
     if (state.view === 'setup') {
         container.innerHTML = `<div class="card">
-            <div class="flex-row"><h2>Setup</h2><button onclick="toggleDarkMode()">🌙</button></div>
-            <label>Players:</label>${state.players.map((p, i) => `<input type="text" oninput="state.players[${i}]=this.value" value="${p}">`).join('')}
-            <div style="margin:10px 0; padding:10px; background:rgba(0,0,0,0.05); border-radius:8px;">
-                <label>Team Mode:</label><div class="flex-row" style="margin-top:5px;">
+            <div class="flex-row"><h2>Setup</h2><button onclick="state.darkMode=!state.darkMode; document.body.classList.toggle('dark-mode'); save();">🌙</button></div>
+            ${state.players.map((p, i) => `<input type="text" oninput="state.players[${i}]=this.value" value="${p}" placeholder="Player ${i+1}">`).join('')}
+            <div style="margin:10px 0; display:flex; gap:10px;">
                 <button onclick="state.teamMode='random';render()" style="background:${state.teamMode==='random'?'var(--accent)':'#95a5a6'}">🎲 Random</button>
-                <button onclick="state.teamMode='manual';render()" style="background:${state.teamMode==='manual'?'var(--accent)':'#95a5a6'}">✍️ Manual</button></div>
+                <button onclick="state.teamMode='manual';render()" style="background:${state.teamMode==='manual'?'var(--accent)':'#95a5a6'}">✍️ Manual</button>
             </div>
-            <label>First Dealer:</label><select id="firstDealerSelect"><option value="-1">🎲 Randomize Dealer</option>${state.players.map((n, i) => `<option value="${i}">${n || `P${i+1}`}</option>`).join('')}</select>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:15px; padding:10px; background:rgba(0,0,0,0.03);">
-                <div>Goal: <select onchange="state.goal=parseInt(this.value)"><option value="300" ${state.goal==300?'selected':''}>300</option><option value="500" ${state.goal==500?'selected':''}>500</option></select></div>
-                <div>Bags: <select onchange="state.bagLimit=parseInt(this.value)"><option value="5" ${state.bagLimit==5?'selected':''}>5</option><option value="10" ${state.bagLimit==10?'selected':''}>10</option></select></div>
-                <div>Penalty: <select onchange="state.bagPenalty=parseInt(this.value)"><option value="50" ${state.bagPenalty==50?'selected':''}>50</option><option value="100" ${state.bagPenalty==100?'selected':''}>100</option></select></div>
-                <div>Set Out: <select onchange="state.setLimit=parseInt(this.value)"><option value="2" ${state.setLimit==2?'selected':''}>2</option><option value="3" ${state.setLimit==3?'selected':''}>3</option></select></div>
+            <select id="firstDealerSelect"><option value="-1">🎲 Random Dealer</option>${state.players.map((n, i) => `<option value="${i}">${n || `P${i+1}`}</option>`).join('')}</select>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; background:rgba(0,0,0,0.03); padding:10px; border-radius:8px;">
+                <div><label style="font-size:0.7rem">Goal</label><select onchange="window.updateRule('goal', parseInt(this.value))"><option value="300" ${state.goal===300?'selected':''}>300</option><option value="500" ${state.goal===500?'selected':''}>500</option></select></div>
+                <div><label style="font-size:0.7rem">Bag Limit</label><select onchange="window.updateRule('bagLimit', parseInt(this.value))"><option value="5" ${state.bagLimit===5?'selected':''}>5</option><option value="10" ${state.bagLimit===10?'selected':''}>10</option></select></div>
+                <div><label style="font-size:0.7rem">Penalty</label><select onchange="window.updateRule('bagPenalty', parseInt(this.value))"><option value="50" ${state.bagPenalty===50?'selected':''}>-50</option><option value="100" ${state.bagPenalty===100?'selected':''}>-100</option></select></div>
+                <div><label style="font-size:0.7rem">Set Out</label><select onchange="window.updateRule('setLimit', parseInt(this.value))"><option value="2" ${state.setLimit===2?'selected':''}>2 Sets</option><option value="3" ${state.setLimit===3?'selected':''}>3 Sets</option></select></div>
             </div>
-            <button onclick="startGame()" style="background:var(--success);">Start Game</button><button onclick="state.view='stats';render()" style="background:#9b59b6;">Stats</button></div>`;
-    } else {
+            <button onclick="startGame()" style="background:var(--success); margin-top:15px;">${state.history.length > 0 ? 'Resume Game' : 'Start Game'}</button>
+            <button onclick="state.view='stats';render()" style="background:#9b59b6; margin-top:10px;">Leaderboard</button>
+        </div>`;
+    } 
+    else {
         const dealer = state.players[(state.dealerIndex + state.history.length) % 4];
+        const t1Score = state.teams[0].score;
+        const t2Score = state.teams[1].score;
+        
         container.innerHTML = `
-            <div class="flex-row card" style="padding:10px; font-size:0.75rem;">
-                <span>🎯<b>${state.goal}</b> | 🎒<b>${state.bagLimit}/-${state.bagPenalty}</b> | ❌<b>${state.setLimit}</b></span>
-                <button onclick="state.view='setup';render()">⚙️</button>
+            <div class="card" style="padding:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-bottom:5px;">
+                    <span><b>Goal:</b> ${state.goal}</span>
+                    <span><b>Bags:</b> ${state.bagLimit} (-${state.bagPenalty})</span>
+                </div>
+                <div style="display:flex; height:15px; background:#eee; border-radius:10px; overflow:hidden; margin-bottom:5px;">
+                    <div style="width:${Math.max(0, (t1Score/state.goal)*100)}%; background:var(--accent); transition:0.5s;"></div>
+                </div>
+                <div style="display:flex; height:15px; background:#eee; border-radius:10px; overflow:hidden;">
+                    <div style="width:${Math.max(0, (t2Score/state.goal)*100)}%; background:var(--success); transition:0.5s;"></div>
+                </div>
             </div>
-            <div class="team-grid">${state.teams.map((t,i) => `<div class="card">
-                <h3>${t.members.join(' & ')}</h3><small>${t.members.map(m=>m===dealer?`🃏 ${m}`:m).join(' & ')}</small>
+            
+            <div class="team-grid">${state.teams.map((t,i) => `<div class="card" style="border-left:5px solid ${i===0?'var(--accent)':'var(--success)'}">
+                <h3>${t.members.join(' & ')}</h3><small>${t.members.includes(dealer)?'🃏 Dealer':''}</small>
                 <div class="score-display">${t.score}</div><small>Bags: ${t.bags}/${state.bagLimit} | Sets: ${t.setCount}</small>
             </div>`).join('')}</div>
+            
             <div class="card"><h3>Record Hand</h3>
                 <div class="team-grid">${[0,1].map(i=>`<div><b>${getInitials(state.teams[i].members)}</b>
-                <input type="number" id="t${i}Bid" placeholder="Bid"><input type="number" id="t${i}Got" placeholder="Got" ${i===0?'oninput="autoFillTricks(this.value)"':''}>
-                <label style="color:var(--danger); font-size:0.7rem;"><input type="checkbox" id="t${i}Reneg"> Renegade?</label><br>
+                <input type="number" id="t${i}Bid" placeholder="Bid"><input type="number" id="t${i}Got" placeholder="Got" ${i===0?'oninput="window.autoFillTricks(this.value)"':''}>
+                <label style="font-size:0.7rem;"><input type="checkbox" id="t${i}Reneg"> Renegade?</label><br>
                 <label style="font-size:0.7rem;"><input type="checkbox" id="t${i}Nil"> Nil?</label><input type="number" id="t${i}NilGot" placeholder="N" style="width:30px"></div>`).join('')}</div>
                 <button onclick="submitHand()">Submit</button>
             </div>
+            
             <div class="card"><table><thead><tr><th>#</th><th>${getInitials(state.teams[0].members)}</th><th>${getInitials(state.teams[1].members)}</th></tr></thead>
-            <tbody>${state.history.map((h,i)=>`<tr><td>${i+1}</td><td>${h.t1.bid}/${h.t1.teamGot}</td><td>${h.t2.bid}/${h.t2.teamGot}</td></tr>`).reverse().join('')}</tbody></table>
-            <button onclick="state.history.pop();calculateScores();render();" style="background:var(--warning);">Undo</button><button onclick="resetGame()" style="background:var(--danger);">Reset</button></div>`;
+            <tbody>${state.history.map((h,i)=> {
+                const snap = getTotalsAtStep(state.history.slice(0, i + 1));
+                const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "");
+                const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "");
+                return `<tr><td>${i+1}</td><td>${h.t1.bid}/${h.t1.teamGot} ${p1}</td><td>${h.t2.bid}/${h.t2.teamGot} ${p2}</td></tr>`;
+            }).reverse().join('')}</tbody></table>
+            <button onclick="state.history.pop();calculateScores();render();" style="background:var(--warning); margin-top:10px;">Undo</button>
+            <button onclick="state.view='setup';render()" style="background:#95a5a6; margin-top:10px;">⚙️ Settings</button>
+            </div>`;
     }
 }
 render();
