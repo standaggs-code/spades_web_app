@@ -10,7 +10,7 @@ const state = {
     nilValue: 50,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
-    setLimit: initialState?.setLimit || 3,
+    setLimit: initialState?.setLimit || 3, // Total sets to lose
     dealerIndex: initialState?.dealerIndex || 0,
     darkMode: initialState?.darkMode || false,
     teams: initialState?.teams || [
@@ -31,8 +31,8 @@ const getInitials = (namesArray) => namesArray.map(n => n.trim().split(' ').map(
 // --- 2. Scoring Engine ---
 function getTotalsAtStep(historyArray) {
     let t = [
-        { score: 0, bags: 0, setCount: 0, penaltyThisRound: false, setThisRound: false }, 
-        { score: 0, bags: 0, setCount: 0, penaltyThisRound: false, setThisRound: false }
+        { score: 0, bags: 0, setCount: 0, consecutiveSets: 0, penaltyThisRound: false, setThisRound: false }, 
+        { score: 0, bags: 0, setCount: 0, consecutiveSets: 0, penaltyThisRound: false, setThisRound: false }
     ];
     
     historyArray.forEach(round => {
@@ -76,6 +76,13 @@ function getTotalsAtStep(historyArray) {
                 team.bags -= state.bagLimit;
                 team.penaltyThisRound = true;
             }
+
+            // Streak Calculation (The "Back-to-Back" Rule)
+            if (team.setThisRound) {
+                team.consecutiveSets++;
+            } else {
+                team.consecutiveSets = 0; // Reset streak if they make a bid
+            }
         });
     });
     return t;
@@ -83,10 +90,14 @@ function getTotalsAtStep(historyArray) {
 
 function calculateScores() {
     const final = getTotalsAtStep(state.history);
+    
+    // Update State
     [0, 1].forEach(i => {
         state.teams[i].score = final[i].score;
         state.teams[i].bags = final[i].bags;
         state.teams[i].setCount = final[i].setCount;
+        // We track consecutive sets in the calculation but don't strictly need to save it to main state
+        // unless we want to display it. We use final[i].consecutiveSets below for logic.
     });
     
     state.winner = null;
@@ -95,15 +106,21 @@ function calculateScores() {
     const s1 = state.teams[0].score;
     const s2 = state.teams[1].score;
 
-    // A. Set Limit Check (Instant Loss)
-    if (state.teams[0].setCount >= state.setLimit) { state.winner = t2N; state.winReason = `${t1N} hit set limit.`; }
-    else if (state.teams[1].setCount >= state.setLimit) { state.winner = t1N; state.winReason = `${t2N} hit set limit.`; }
+    // --- WIN/LOSS LOGIC ---
+
+    // 1. Back-to-Back Set Rule (Immediate Loss)
+    if (final[0].consecutiveSets >= 2) { state.winner = t2N; state.winReason = `${t1N} set twice in a row!`; }
+    else if (final[1].consecutiveSets >= 2) { state.winner = t1N; state.winReason = `${t2N} set twice in a row!`; }
     
-    // B. Goal Check (With Tie/Overtime Logic)
+    // 2. Total Set Limit Rule (3 Sets total)
+    else if (state.teams[0].setCount >= state.setLimit) { state.winner = t2N; state.winReason = `${t1N} hit set limit (${state.setLimit}).`; }
+    else if (state.teams[1].setCount >= state.setLimit) { state.winner = t1N; state.winReason = `${t2N} hit set limit (${state.setLimit}).`; }
+    
+    // 3. Goal Check
     else if (s1 >= state.goal || s2 >= state.goal) {
         if (s1 > s2) { state.winner = t1N; state.winReason = "Goal reached!"; }
         else if (s2 > s1) { state.winner = t2N; state.winReason = "Goal reached!"; }
-        else { state.winner = null; } // Tie
+        else { state.winner = null; } 
     }
     
     // Career Stats
@@ -155,8 +172,10 @@ window.exportGame = () => {
     
     state.history.forEach((h, i) => {
         const snap = getTotalsAtStep(state.history.slice(0, i + 1));
-        const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "");
-        const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "");
+        const n1 = h.t1.isNil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
+        const n2 = h.t2.isNil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
+        const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "") + n1;
+        const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "") + n2;
         txt += `R${i+1}: \t${snap[0].score}${p1} (${h.t1.bid}/${h.t1.teamGot}) | ${snap[1].score}${p2} (${h.t2.bid}/${h.t2.teamGot})\n`;
     });
     
@@ -251,7 +270,18 @@ function render() {
         </div>`;
     } 
     else {
-        const dealer = state.players[(state.dealerIndex + state.history.length) % 4];
+        // --- DEALER ROTATION FIX ---
+        let dealerName;
+        if (state.teamMode === 'manual') {
+            const manualRotation = [0, 2, 1, 3];
+            const startIndex = manualRotation.indexOf(state.dealerIndex);
+            const safeStart = startIndex === -1 ? 0 : startIndex;
+            const currentIndex = manualRotation[(safeStart + state.history.length) % 4];
+            dealerName = state.players[currentIndex];
+        } else {
+            dealerName = state.players[(state.dealerIndex + state.history.length) % 4];
+        }
+
         const t1Score = state.teams[0].score;
         const t2Score = state.teams[1].score;
         
@@ -270,7 +300,7 @@ function render() {
             </div>
             
             <div class="team-grid">${state.teams.map((t,i) => `<div class="card" style="border-left:5px solid ${i===0?'var(--accent)':'var(--success)'}">
-                <h3>${t.members.join(' & ')}</h3><small>${t.members.includes(dealer)?'🃏 Dealer':''}</small>
+                <h3>${t.members.join(' & ')}</h3><small>${t.members.includes(dealerName)?'🃏 Dealer':''}</small>
                 <div class="score-display">${t.score}</div><small>Bags: ${t.bags}/${state.bagLimit} | Sets: ${t.setCount}</small>
             </div>`).join('')}</div>
             
@@ -285,8 +315,13 @@ function render() {
             <div class="card"><table><thead><tr><th>#</th><th>${getInitials(state.teams[0].members)}</th><th>${getInitials(state.teams[1].members)}</th></tr></thead>
             <tbody>${state.history.map((h,i)=> {
                 const snap = getTotalsAtStep(state.history.slice(0, i + 1));
-                const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "");
-                const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "");
+                
+                // --- TABLE NIL INDICATORS ---
+                const n1 = h.t1.isNil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
+                const n2 = h.t2.isNil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
+                
+                const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "") + n1;
+                const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "") + n2;
                 return `<tr><td>${i+1}</td><td>${h.t1.bid}/${h.t1.teamGot} ${p1}</td><td>${h.t2.bid}/${h.t2.teamGot} ${p2}</td></tr>`;
             }).reverse().join('')}</tbody></table>
             <button onclick="state.history.pop();calculateScores();render();" style="background:var(--warning); margin-top:10px;">Undo</button>
