@@ -43,10 +43,16 @@ function getTotalsAtStep(historyArray) {
             team.penaltyThisRound = false;
             team.setThisRound = false;
 
-            // Nil Calculation (FIXED: A failed nil no longer counts as a "Set" for the team limits)
+            // Nil Calculation
             if (hand.isNil) {
-                if (hand.nilGot === 0) team.score += state.nilValue;
-                else team.score -= state.nilValue; 
+                if (hand.nilGot === 0) {
+                    team.score += state.nilValue;
+                } else { 
+                    team.score -= state.nilValue; 
+                    // FIX: Tricks taken by a failed Nil count as bags (+1 pt each)
+                    team.score += hand.nilGot;
+                    team.bags += hand.nilGot;
+                }
             }
 
             // Bid Calculation (This is what determines a Set)
@@ -327,3 +333,4 @@ function render() {
     }
 }
 render();
+    
