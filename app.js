@@ -7,7 +7,7 @@ const state = {
     players: initialState?.players || ['', '', '', ''],
     teamMode: initialState?.teamMode || 'random',
     goal: initialState?.goal || 300,
-    nilValue: 50,
+    nilValue: 100,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
     setLimit: initialState?.setLimit || 3, // Total sets to lose
@@ -43,13 +43,13 @@ function getTotalsAtStep(historyArray) {
             team.penaltyThisRound = false;
             team.setThisRound = false;
 
-            // Nil Calculation
+            // Nil Calculation (FIXED: A failed nil no longer counts as a "Set" for the team limits)
             if (hand.isNil) {
                 if (hand.nilGot === 0) team.score += state.nilValue;
-                else { team.score -= state.nilValue; team.setCount++; team.setThisRound = true; }
+                else team.score -= state.nilValue; 
             }
 
-            // Bid Calculation
+            // Bid Calculation (This is what determines a Set)
             const tricks = hand.teamGot - (hand.isNil ? hand.nilGot : 0);
             if (hand.bid > 0) {
                 if (tricks >= hand.bid && !hand.reneg) {
@@ -61,6 +61,7 @@ function getTotalsAtStep(historyArray) {
                         team.bags += extras; 
                     }
                 } else { 
+                    // Failed board bid = SET
                     team.score -= (hand.bid * 10); 
                     team.setCount++; 
                     team.setThisRound = true; 
@@ -81,7 +82,7 @@ function getTotalsAtStep(historyArray) {
             if (team.setThisRound) {
                 team.consecutiveSets++;
             } else {
-                team.consecutiveSets = 0; // Reset streak if they make a bid
+                team.consecutiveSets = 0; // Reset streak if they make their board bid
             }
         });
     });
@@ -96,8 +97,6 @@ function calculateScores() {
         state.teams[i].score = final[i].score;
         state.teams[i].bags = final[i].bags;
         state.teams[i].setCount = final[i].setCount;
-        // We track consecutive sets in the calculation but don't strictly need to save it to main state
-        // unless we want to display it. We use final[i].consecutiveSets below for logic.
     });
     
     state.winner = null;
@@ -270,7 +269,6 @@ function render() {
         </div>`;
     } 
     else {
-        // --- DEALER ROTATION FIX ---
         let dealerName;
         if (state.teamMode === 'manual') {
             const manualRotation = [0, 2, 1, 3];
@@ -316,7 +314,6 @@ function render() {
             <tbody>${state.history.map((h,i)=> {
                 const snap = getTotalsAtStep(state.history.slice(0, i + 1));
                 
-                // --- TABLE NIL INDICATORS ---
                 const n1 = h.t1.isNil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
                 const n2 = h.t2.isNil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
                 
