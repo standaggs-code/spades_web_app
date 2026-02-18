@@ -7,10 +7,11 @@ const state = {
     players: initialState?.players || ['', '', '', ''],
     teamMode: initialState?.teamMode || 'random',
     goal: initialState?.goal || 300,
-    nilValue: 50,
+    nilValue: 100,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
-    setLimit: initialState?.setLimit || 3, // Total sets to lose
+    setLimit: initialState?.setLimit || 3, 
+    firstHandRule: initialState?.firstHandRule || false, // NEW: Bids Itself Rule
     dealerIndex: initialState?.dealerIndex || 0,
     darkMode: initialState?.darkMode || false,
     teams: initialState?.teams || [
@@ -49,13 +50,12 @@ function getTotalsAtStep(historyArray) {
                     team.score += state.nilValue;
                 } else { 
                     team.score -= state.nilValue; 
-                    // FIX: Tricks taken by a failed Nil count as bags (+1 pt each)
                     team.score += hand.nilGot;
                     team.bags += hand.nilGot;
                 }
             }
 
-            // Bid Calculation (This is what determines a Set)
+            // Bid Calculation
             const tricks = hand.teamGot - (hand.isNil ? hand.nilGot : 0);
             if (hand.bid > 0) {
                 if (tricks >= hand.bid && !hand.reneg) {
@@ -67,12 +67,12 @@ function getTotalsAtStep(historyArray) {
                         team.bags += extras; 
                     }
                 } else { 
-                    // Failed board bid = SET
                     team.score -= (hand.bid * 10); 
                     team.setCount++; 
                     team.setThisRound = true; 
                 }
             } else if (!hand.isNil) { 
+                // Handles 0 bids that aren't Nils (like "Bids Itself" 0 tricks, though that triggers instant loss now)
                 team.score += tricks; 
                 team.bags += tricks; 
             }
@@ -84,12 +84,9 @@ function getTotalsAtStep(historyArray) {
                 team.penaltyThisRound = true;
             }
 
-            // Streak Calculation (The "Back-to-Back" Rule)
-            if (team.setThisRound) {
-                team.consecutiveSets++;
-            } else {
-                team.consecutiveSets = 0; // Reset streak if they make their board bid
-            }
+            // Streak Calculation
+            if (team.setThisRound) team.consecutiveSets++;
+            else team.consecutiveSets = 0; 
         });
     });
     return t;
@@ -98,7 +95,6 @@ function getTotalsAtStep(historyArray) {
 function calculateScores() {
     const final = getTotalsAtStep(state.history);
     
-    // Update State
     [0, 1].forEach(i => {
         state.teams[i].score = final[i].score;
         state.teams[i].bags = final[i].bags;
@@ -113,19 +109,32 @@ function calculateScores() {
 
     // --- WIN/LOSS LOGIC ---
 
-    // 1. Back-to-Back Set Rule (Immediate Loss)
-    if (final[0].consecutiveSets >= 2) { state.winner = t2N; state.winReason = `${t1N} set twice in a row!`; }
-    else if (final[1].consecutiveSets >= 2) { state.winner = t1N; state.winReason = `${t2N} set twice in a row!`; }
-    
-    // 2. Total Set Limit Rule (3 Sets total)
-    else if (state.teams[0].setCount >= state.setLimit) { state.winner = t2N; state.winReason = `${t1N} hit set limit (${state.setLimit}).`; }
-    else if (state.teams[1].setCount >= state.setLimit) { state.winner = t1N; state.winReason = `${t2N} hit set limit (${state.setLimit}).`; }
-    
-    // 3. Goal Check
-    else if (s1 >= state.goal || s2 >= state.goal) {
-        if (s1 > s2) { state.winner = t1N; state.winReason = "Goal reached!"; }
-        else if (s2 > s1) { state.winner = t2N; state.winReason = "Goal reached!"; }
-        else { state.winner = null; } 
+    // 0. The "Board" Rule (Instant Loss on Hand 1 if < 4)
+    if (state.firstHandRule && state.history.length > 0) {
+        const firstHand = state.history[0];
+        if (firstHand.t1.teamGot < 4) {
+            state.winner = t2N; 
+            state.winReason = `${t1N} missed board (got ${firstHand.t1.teamGot}) on the first hand!`;
+        } else if (firstHand.t2.teamGot < 4) {
+            state.winner = t1N; 
+            state.winReason = `${t2N} missed board (got ${firstHand.t2.teamGot}) on the first hand!`;
+        }
+    }
+
+    if (!state.winner) {
+        // 1. Back-to-Back Set Rule
+        if (final[0].consecutiveSets >= 2) { state.winner = t2N; state.winReason = `${t1N} set twice in a row!`; }
+        else if (final[1].consecutiveSets >= 2) { state.winner = t1N; state.winReason = `${t2N} set twice in a row!`; }
+        
+        // 2. Total Set Limit Rule
+        else if (state.teams[0].setCount >= state.setLimit) { state.winner = t2N; state.winReason = `${t1N} hit set limit (${state.setLimit}).`; }
+        else if (state.teams[1].setCount >= state.setLimit) { state.winner = t1N; state.winReason = `${t2N} hit set limit (${state.setLimit}).`; }
+        
+        // 3. Goal Check
+        else if (s1 >= state.goal || s2 >= state.goal) {
+            if (s1 > s2) { state.winner = t1N; state.winReason = "Goal reached!"; }
+            else if (s2 > s1) { state.winner = t2N; state.winReason = "Goal reached!"; }
+        }
     }
     
     // Career Stats
@@ -151,17 +160,28 @@ window.submitHand = () => {
     let t0G = parseInt(document.getElementById('t0Got').value) || 0;
     let t1G = parseInt(document.getElementById('t1Got').value) || 0;
     if (t0G + t1G !== 13) return alert("Total tricks must equal 13.");
+    
     const t0R = document.getElementById('t0Reneg').checked;
     const t1R = document.getElementById('t1Reneg').checked;
     if (t0R) { t0G = Math.max(0, t0G - 3); t1G += 3; }
     if (t1R) { t1G = Math.max(0, t1G - 3); t0G += 3; }
-    const getData = (id, got, reneg) => ({
-        bid: parseInt(document.getElementById(`${id}Bid`).value) || 0, 
-        teamGot: got,
-        isNil: document.getElementById(`${id}Nil`).checked, 
-        nilGot: parseInt(document.getElementById(`${id}NilGot`).value) || 0, 
-        reneg: reneg
-    });
+    
+    const isFirstHandAuto = (state.history.length === 0 && state.firstHandRule);
+    
+    const getData = (id, got, reneg) => {
+        let bid = parseInt(document.getElementById(`${id}Bid`)?.value) || 0;
+        let isNil = document.getElementById(`${id}Nil`)?.checked || false;
+        let nilGot = parseInt(document.getElementById(`${id}NilGot`)?.value) || 0;
+        
+        // Auto-assign bid for "Bids Itself" rule
+        if (isFirstHandAuto) {
+            bid = got;
+            isNil = false;
+            nilGot = 0;
+        }
+        return { bid, teamGot: got, isNil, nilGot, reneg };
+    };
+    
     state.history.push({ t1: getData('t0', t0G, t0R), t2: getData('t1', t1G, t1R) });
     calculateScores(); render();
 };
@@ -269,6 +289,12 @@ function render() {
                 <div><label style="font-size:0.7rem">Bag Limit</label><select onchange="window.updateRule('bagLimit', parseInt(this.value))"><option value="5" ${state.bagLimit===5?'selected':''}>5</option><option value="10" ${state.bagLimit===10?'selected':''}>10</option></select></div>
                 <div><label style="font-size:0.7rem">Penalty</label><select onchange="window.updateRule('bagPenalty', parseInt(this.value))"><option value="50" ${state.bagPenalty===50?'selected':''}>-50</option><option value="100" ${state.bagPenalty===100?'selected':''}>-100</option></select></div>
                 <div><label style="font-size:0.7rem">Set Out</label><select onchange="window.updateRule('setLimit', parseInt(this.value))"><option value="2" ${state.setLimit===2?'selected':''}>2 Sets</option><option value="3" ${state.setLimit===3?'selected':''}>3 Sets</option></select></div>
+                
+                <div style="grid-column: span 2;"><label style="font-size:0.7rem">First Hand</label>
+                <select onchange="window.updateRule('firstHandRule', this.value === 'true')">
+                    <option value="false" ${!state.firstHandRule?'selected':''}>Standard</option>
+                    <option value="true" ${state.firstHandRule?'selected':''}>Bids Itself (Min 4)</option>
+                </select></div>
             </div>
             <button onclick="startGame()" style="background:var(--success); margin-top:15px;">${state.history.length > 0 ? 'Resume Game' : 'Start Game'}</button>
             <button onclick="state.view='stats';render()" style="background:#9b59b6; margin-top:10px;">Leaderboard</button>
@@ -309,20 +335,32 @@ function render() {
             </div>`).join('')}</div>
             
             <div class="card"><h3>Record Hand</h3>
-                <div class="team-grid">${[0,1].map(i=>`<div><b>${getInitials(state.teams[i].members)}</b>
-                <input type="number" id="t${i}Bid" placeholder="Bid"><input type="number" id="t${i}Got" placeholder="Got" ${i===0?'oninput="window.autoFillTricks(this.value)"':''}>
-                <label style="font-size:0.7rem;"><input type="checkbox" id="t${i}Reneg"> Renegade?</label><br>
-                <label style="font-size:0.7rem;"><input type="checkbox" id="t${i}Nil"> Nil?</label><input type="number" id="t${i}NilGot" placeholder="N" style="width:30px"></div>`).join('')}</div>
+                <div class="team-grid">${[0,1].map(i=> {
+                    
+                    // --- NEW: UI Swap for First Hand Rule ---
+                    const isFirstHandAuto = (state.history.length === 0 && state.firstHandRule);
+                    const bidUI = isFirstHandAuto 
+                        ? `<input type="text" id="t${i}Bid" value="Auto" disabled style="background:#eee; text-align:center; color:#888;">`
+                        : `<input type="number" id="t${i}Bid" placeholder="Bid">`;
+                    const nilUI = isFirstHandAuto 
+                        ? `` 
+                        : `<br><label style="font-size:0.7rem;"><input type="checkbox" id="t${i}Nil"> Nil?</label><input type="number" id="t${i}NilGot" placeholder="N" style="width:30px">`;
+                    
+                    return `<div><b>${getInitials(state.teams[i].members)}</b>
+                    ${bidUI}
+                    <input type="number" id="t${i}Got" placeholder="Got Tricks" ${i===0?'oninput="window.autoFillTricks(this.value)"':''}>
+                    <label style="font-size:0.7rem;"><input type="checkbox" id="t${i}Reneg"> Renegade?</label>
+                    ${nilUI}
+                    </div>`;
+                }).join('')}</div>
                 <button onclick="submitHand()">Submit</button>
             </div>
             
             <div class="card"><table><thead><tr><th>#</th><th>${getInitials(state.teams[0].members)}</th><th>${getInitials(state.teams[1].members)}</th></tr></thead>
             <tbody>${state.history.map((h,i)=> {
                 const snap = getTotalsAtStep(state.history.slice(0, i + 1));
-                
                 const n1 = h.t1.isNil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
                 const n2 = h.t2.isNil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
-                
                 const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "") + n1;
                 const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "") + n2;
                 return `<tr><td>${i+1}</td><td>${h.t1.bid}/${h.t1.teamGot} ${p1}</td><td>${h.t2.bid}/${h.t2.teamGot} ${p2}</td></tr>`;
@@ -332,5 +370,4 @@ function render() {
             </div>`;
     }
 }
-render();
-    
+render();                                       
