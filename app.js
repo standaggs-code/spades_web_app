@@ -7,7 +7,7 @@ const state = {
     players: initialState?.players || ['', '', '', ''],
     teamMode: initialState?.teamMode || 'random',
     goal: initialState?.goal || 300,
-    nilValue: 100,
+    nilValue: 50,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
     setLimit: initialState?.setLimit || 3, 
