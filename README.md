@@ -1,40 +1,34 @@
-♠️ Spades Scorekeeper: Host Guide
+# Standaggs Spades Scorekeeper
 
-🚀 Getting Started
+A lightning-fast, progressive web app (PWA) designed for keeping score in cutthroat Spades. Built for mobile, this scorekeeper eliminates the math and arguments so you can focus on the game. 
 
-Enter Names: Type all 4 player names in the setup screen.
+## ♠️ Core Features
 
-Pick First Dealer: Use the dropdown to select who starts with the cards.
+*   **Lightning-Fast Input:** Designed for speed at the table. Type in the bids and the tricks caught, and the app does the rest. 
+*   **Cutthroat House Rules:**
+    *   *First Hand Bids Itself:* Optional rule where the first hand has no bidding phase; you must catch a minimum of 4 books or you instantly lose the game.
+    *   *Double Set Mercy Rule:* Getting set twice in a row results in an automatic loss.
+    *   *Forgiving Nils:* If a player busts their Nil, the tricks they caught flow into the team pool to help the partner satisfy the board bid.
+    *   *Capped Sets:* A team can only suffer a maximum of 1 Set per round, even if they miss both their Nil and their board bid.
+*   **Advanced Career Leaderboard:** Under the hood, the app tracks your group's lifetime stats:
+    *   **Hall of Fame:** Win Percentage, Average Points, and Nil Success Rates.
+    *   **Wall of Shame:** Total Sets, Bag-Outs, and Renegades.
+*   **Cross-Device Syncing:** Generate a text-friendly Base64 export code to merge your leaderboard with your friends' phones after game night.
+*   **Smart Rematch:** Hit "Rematch" to keep the same teams and instantly start a new game—the app automatically forces the losing team to deal the first hand.
+*   **Clipboard Export:** One-tap export to copy a cleanly formatted text summary of the match (round-by-round) to paste into your group chat.
 
-Set Your Rules: * Goal: 250 (Short) or 500 (Standard).
+## 🚀 Installation / Setup
 
-Bag Limit: 10 bags is standard; 5 bags makes the game much more "punishing."
+This is a Progressive Web App (PWA). You do not need an app store to install it.
 
-Set Limit: If a team fails their bid 3 times (or 2, depending on your choice), they lose instantly.
+1. Navigate to the hosted GitHub Pages link on your mobile device (Safari for iOS, Chrome for Android).
+2. Tap your browser's menu (Share button on iOS, three dots on Android).
+3. Select **"Add to Home Screen"**.
+4. The app will now function natively on your phone, complete with offline support and a clean, fullscreen interface.
 
-Randomize: Hit "Randomize & Start" to let the app pick the teams (Partner 1 & 3 vs Partner 2 & 4).
+## 🛠 Tech Stack
 
-📝 Recording Hands
-Bid/Got: Enter the team's total bid and the total tricks they actually took.
-
-Nil Bids: If a player goes Nil, check the Nil? box and enter how many tricks that specific player took.
-
-The app automatically subtracts the Nil tricks from the team total to see if the partner "covered" the bid.
-
-Undo: Made a mistake? Hit Undo Last Round to revert the score and the dealer icon.
-
-🏠 House Rules (Hardcoded Logic)
-Bags: Each bag is +1 point. Reaching the Bag Limit results in a penalty of -50 or -100 points (resets bags to zero).
-
-The "Set Out" Rule: If a team fails their bid (or fails a Nil) twice in a row OR 3 times total, the game ends immediately and the other team wins.
-
-Dealer Rotation: The 🃏 icon moves clockwise every hand. If you undo a hand, the dealer icon moves back.
-
-🏆 Career Stats & Leaderboard
-Persistence: All wins and losses are saved to the device.
-
-Win %: The Leaderboard ranks players by their efficiency (Wins/Games).
-
-Dark Mode: Use the 🌙 icon at night to save your eyes.
-
-Exporting: Click "Export Results" at the end of a game to copy a full play-by-play to your clipboard for the group chat.
+*   **HTML5 / CSS3** (Custom responsive grid layout, Dark/Light mode support)
+*   **Vanilla JavaScript** (Zero dependencies, lightning-fast execution)
+*   **Local Storage API** (Saves game state continuously so you never lose your score if the app is closed)
+*   **Service Workers** (Allows for full offline capability)
