@@ -7,7 +7,7 @@ const state = {
     players: initialState?.players || ['', '', '', ''],
     teamMode: initialState?.teamMode || 'random',
     goal: initialState?.goal || 300,
-    nilValue: 100,
+    nilValue: 50,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
     setLimit: initialState?.setLimit || 3, 
@@ -33,8 +33,8 @@ const getSingleInitial = (name) => name.trim().split(' ').map(p => p[0] ? p[0].t
 // --- 2. Scoring Engine ---
 function getTotalsAtStep(historyArray) {
     let t = [
-        { score: 0, bags: 0, setCount: 0, consecutiveSets: 0, bagOuts: 0, penaltyThisRound: false, setThisRound: false }, 
-        { score: 0, bags: 0, setCount: 0, consecutiveSets: 0, bagOuts: 0, penaltyThisRound: false, setThisRound: false }
+        { score: 0, bags: 0, setCount: 0, consecutiveSets: 0, bagOuts: 0, penaltyThisRound: false, setThisRound: false, boardSetThisRound: false }, 
+        { score: 0, bags: 0, setCount: 0, consecutiveSets: 0, bagOuts: 0, penaltyThisRound: false, setThisRound: false, boardSetThisRound: false }
     ];
     
     historyArray.forEach(round => {
@@ -44,6 +44,7 @@ function getTotalsAtStep(historyArray) {
             const oppHand = hands[i === 0 ? 1 : 0];
             team.penaltyThisRound = false;
             team.setThisRound = false;
+            team.boardSetThisRound = false; // Tracks if the numerical bid failed
             
             let failedNil = false;
             let failedBid = false;
@@ -77,6 +78,7 @@ function getTotalsAtStep(historyArray) {
                 } else { 
                     team.score -= (hand.bid * 10); 
                     failedBid = true; 
+                    team.boardSetThisRound = true; // Board specifically failed
                 }
             } else { 
                 team.score += tricks; 
@@ -237,8 +239,10 @@ window.exportGame = () => {
         
         const n1 = t1Nil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
         const n2 = t2Nil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
-        const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "") + n1;
-        const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "") + n2;
+        
+        // Changed to snap.boardSetThisRound to hide the generic X if they just missed the Nil
+        const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].boardSetThisRound ? "❌" : "") + n1;
+        const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].boardSetThisRound ? "❌" : "") + n2;
         txt += `R${i+1}: \t${snap[0].score}${p1} (${h.t1.bid}/${h.t1.teamGot}) | ${snap[1].score}${p2} (${h.t2.bid}/${h.t2.teamGot})\n`;
     });
     
@@ -396,7 +400,6 @@ function render() {
                         ? `<input type="text" id="t${i}Bid" value="Auto" disabled style="background:#eee; text-align:center; color:#888;">`
                         : `<input type="number" id="t${i}Bid" placeholder="Bid">`;
                     
-                    // --- GUI FIX: Explicit Flexbox formatting and width overrides for checkboxes ---
                     const nilUI = isFirstHandAuto ? `` : `
                         <div style="font-size:0.75rem; margin-top:10px; border-top:1px solid var(--border); padding-top:10px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
@@ -434,8 +437,10 @@ function render() {
                 const t2Nil = h.t2.nils.some(n=>n);
                 const n1 = t1Nil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
                 const n2 = t2Nil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
-                const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].setThisRound ? "❌" : "") + n1;
-                const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].setThisRound ? "❌" : "") + n2;
+                
+                // Use boardSetThisRound instead of setThisRound
+                const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].boardSetThisRound ? "❌" : "") + n1;
+                const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].boardSetThisRound ? "❌" : "") + n2;
                 return `<tr><td>${i+1}</td><td>${h.t1.bid}/${h.t1.teamGot} ${p1}</td><td>${h.t2.bid}/${h.t2.teamGot} ${p2}</td></tr>`;
             }).reverse().join('')}</tbody></table>
             <button onclick="state.history.pop();calculateScores();render();" style="background:var(--warning); margin-top:10px;">Undo</button>
