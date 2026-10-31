@@ -7,7 +7,7 @@ const state = {
     players: initialState?.players || ['', '', '', ''],
     teamMode: initialState?.teamMode || 'random',
     goal: initialState?.goal || 300,
-    nilValue: 50,
+    nilValue: 100,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
     setLimit: initialState?.setLimit || 3, 
@@ -27,7 +27,6 @@ const state = {
 if (state.darkMode) document.body.classList.add('dark-mode');
 const save = () => localStorage.setItem('spades_game_state', JSON.stringify(state));
 
-// --- NEW HELPER: Standardizes names (e.g. "dan" -> "Dan") for the database ---
 const formatName = (name) => name.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
 const getInitials = (namesArray) => namesArray.map(n => n.trim().split(' ').map(p => p[0] ? p[0].toUpperCase() : '').join('')).join(' & ');
@@ -275,7 +274,6 @@ window.importStats = () => {
         let current = JSON.parse(localStorage.getItem('spades_career_stats')) || {};
         
         for (const player in imported) {
-            // Guarantee imported names are also capitalized properly during merge
             const cleanPlayer = formatName(player);
             
             if (!current[cleanPlayer]) {
@@ -298,13 +296,41 @@ window.importStats = () => {
 window.continueGame = () => { state.winner = null; state.statsRecorded = false; state.view = 'setup'; render(); };
 window.updateRule = (key, val) => { state[key] = val; calculateScores(); render(); };
 
+// --- NEW: Rematch Logic ---
+window.rematch = () => {
+    if(confirm("Start a new game with the exact same teams?")) {
+        // Step 1: Advance the dealer correctly based on how many hands were played
+        let nextDealerIndex;
+        if (state.teamMode === 'manual') {
+            const manualRotation = [0, 2, 1, 3];
+            const startIndex = manualRotation.indexOf(state.dealerIndex);
+            const safeStart = startIndex === -1 ? 0 : startIndex;
+            nextDealerIndex = manualRotation[(safeStart + state.history.length) % 4];
+        } else {
+            nextDealerIndex = (state.dealerIndex + state.history.length) % 4;
+        }
+        state.dealerIndex = nextDealerIndex;
+        
+        // Step 2: Wipe the board
+        state.history = [];
+        state.winner = null;
+        state.winReason = "";
+        state.statsRecorded = false;
+        state.teams.forEach(t => { t.score = 0; t.bags = 0; t.setCount = 0; });
+        
+        // Step 3: Jump right into play
+        state.view = 'play';
+        save();
+        render();
+    }
+};
+
 window.startGame = () => {
     if (state.players.some(p => !p.trim())) return alert("Names required");
     const sel = document.getElementById('firstDealerSelect');
     const sVal = parseInt(sel.value);
     const dName = sVal === -1 ? null : state.players[sVal];
     
-    // Automatically format names before they even start playing
     state.players = state.players.map(p => formatName(p));
     
     if (state.teamMode === 'random') {
@@ -378,8 +404,12 @@ function render() {
         container.innerHTML = `<div class="card" style="text-align:center;">
             <h1>🏆 Winner!</h1><h2>${state.winner}</h2><p>${state.winReason}</p>
             <button onclick="exportGame()">Copy Results</button>
+            
+            <!-- NEW: Rematch Button -->
+            <button onclick="window.rematch()" style="background:#2ecc71; margin-top:10px;">Rematch (Same Teams)</button>
+            
             <button onclick="window.continueGame()" style="background:#3498db; margin-top:10px;">Continue Game</button>
-            <button onclick="resetGame()" style="background:#e74c3c; margin-top:10px;">New Game</button>
+            <button onclick="resetGame()" style="background:#e74c3c; margin-top:10px;">New Game (Setup)</button>
         </div>`;
         return;
     }
@@ -488,6 +518,7 @@ function render() {
                 const t2Nil = h.t2.nils.some(n=>n);
                 const n1 = t1Nil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
                 const n2 = t2Nil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
+                
                 const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].boardSetThisRound ? "❌" : "") + n1;
                 const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].boardSetThisRound ? "❌" : "") + n2;
                 return `<tr><td>${i+1}</td><td>${h.t1.bid}/${h.t1.teamGot} ${p1}</td><td>${h.t2.bid}/${h.t2.teamGot} ${p2}</td></tr>`;
