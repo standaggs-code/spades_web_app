@@ -7,7 +7,7 @@ const state = {
     players: initialState?.players || ['', '', '', ''],
     teamMode: initialState?.teamMode || 'random',
     goal: initialState?.goal || 300,
-    nilValue: 50,
+    nilValue: 100,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
     setLimit: initialState?.setLimit || 3, 
@@ -27,6 +27,9 @@ const state = {
 if (state.darkMode) document.body.classList.add('dark-mode');
 const save = () => localStorage.setItem('spades_game_state', JSON.stringify(state));
 
+// --- NEW HELPER: Standardizes names (e.g. "dan" -> "Dan") for the database ---
+const formatName = (name) => name.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
 const getInitials = (namesArray) => namesArray.map(n => n.trim().split(' ').map(p => p[0] ? p[0].toUpperCase() : '').join('')).join(' & ');
 const getSingleInitial = (name) => name.trim().split(' ').map(p => p[0] ? p[0].toUpperCase() : '').join('');
 
@@ -44,7 +47,7 @@ function getTotalsAtStep(historyArray) {
             const oppHand = hands[i === 0 ? 1 : 0];
             team.penaltyThisRound = false;
             team.setThisRound = false;
-            team.boardSetThisRound = false; // Tracks if the numerical bid failed
+            team.boardSetThisRound = false; 
             
             let failedNil = false;
             let failedBid = false;
@@ -78,7 +81,7 @@ function getTotalsAtStep(historyArray) {
                 } else { 
                     team.score -= (hand.bid * 10); 
                     failedBid = true; 
-                    team.boardSetThisRound = true; // Board specifically failed
+                    team.boardSetThisRound = true; 
                 }
             } else { 
                 team.score += tricks; 
@@ -143,15 +146,19 @@ function calculateScores() {
         let career = JSON.parse(localStorage.getItem('spades_career_stats')) || {};
         
         state.players.forEach(name => {
-            const n = name.trim(); if (!n) return;
+            const n = formatName(name); if (!n) return;
             if (!career[n]) career[n] = { wins: 0, games: 0, sets: 0, bagOuts: 0, nilsAttempted: 0, nilsCaught: 0, renegades: 0 };
             career[n].games++;
         });
 
-        state.winner.split(' & ').forEach(n => { if (career[n.trim()]) career[n.trim()].wins++; });
+        state.winner.split(' & ').forEach(n => { 
+            const formatted = formatName(n);
+            if (career[formatted]) career[formatted].wins++; 
+        });
+        
         state.teams.forEach((team, tIdx) => {
             team.members.forEach(n => { 
-                const pName = n.trim();
+                const pName = formatName(n);
                 if (career[pName]) {
                     career[pName].sets += team.setCount; 
                     career[pName].bagOuts = (career[pName].bagOuts || 0) + final[tIdx].bagOuts;
@@ -163,7 +170,7 @@ function calculateScores() {
             [round.t1, round.t2].forEach((hand, tIdx) => {
                 const teamMembers = state.teams[tIdx].members;
                 teamMembers.forEach((pName, pIdx) => {
-                    const cleanName = pName.trim();
+                    const cleanName = formatName(pName);
                     if (!career[cleanName]) return;
                     
                     if (hand.nils[pIdx]) {
@@ -239,8 +246,6 @@ window.exportGame = () => {
         
         const n1 = t1Nil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
         const n2 = t2Nil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
-        
-        // Changed to snap.boardSetThisRound to hide the generic X if they just missed the Nil
         const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].boardSetThisRound ? "❌" : "") + n1;
         const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].boardSetThisRound ? "❌" : "") + n2;
         txt += `R${i+1}: \t${snap[0].score}${p1} (${h.t1.bid}/${h.t1.teamGot}) | ${snap[1].score}${p2} (${h.t2.bid}/${h.t2.teamGot})\n`;
@@ -251,6 +256,45 @@ window.exportGame = () => {
     alert("It is Done!");
 };
 
+window.exportStats = () => {
+    const career = localStorage.getItem('spades_career_stats');
+    if (!career || career === "{}") return alert("No stats to export yet!");
+    const code = btoa(career);
+    navigator.clipboard.writeText(code).then(() => {
+        alert("📊 Leaderboard Code copied to clipboard! Text this to your friends to merge leaderboards.");
+    }).catch(err => {
+        prompt("Copy this code manually:", code);
+    });
+};
+
+window.importStats = () => {
+    const input = prompt("Paste a Leaderboard Code here to merge it with your current stats:");
+    if (!input) return;
+    try {
+        const imported = JSON.parse(atob(input));
+        let current = JSON.parse(localStorage.getItem('spades_career_stats')) || {};
+        
+        for (const player in imported) {
+            // Guarantee imported names are also capitalized properly during merge
+            const cleanPlayer = formatName(player);
+            
+            if (!current[cleanPlayer]) {
+                current[cleanPlayer] = imported[player];
+            } else {
+                const metrics = ['wins', 'games', 'sets', 'bagOuts', 'nilsAttempted', 'nilsCaught', 'renegades'];
+                metrics.forEach(m => {
+                    current[cleanPlayer][m] = (current[cleanPlayer][m] || 0) + (imported[player][m] || 0);
+                });
+            }
+        }
+        localStorage.setItem('spades_career_stats', JSON.stringify(current));
+        alert("✅ Stats successfully merged!");
+        render();
+    } catch (e) {
+        alert("❌ Invalid code. Please make sure you copied the entire string.");
+    }
+};
+
 window.continueGame = () => { state.winner = null; state.statsRecorded = false; state.view = 'setup'; render(); };
 window.updateRule = (key, val) => { state[key] = val; calculateScores(); render(); };
 
@@ -259,6 +303,10 @@ window.startGame = () => {
     const sel = document.getElementById('firstDealerSelect');
     const sVal = parseInt(sel.value);
     const dName = sVal === -1 ? null : state.players[sVal];
+    
+    // Automatically format names before they even start playing
+    state.players = state.players.map(p => formatName(p));
+    
     if (state.teamMode === 'random') {
         state.players = [...state.players].sort(() => Math.random() - 0.5);
         state.teams[0].members = [state.players[0], state.players[2]];
@@ -315,9 +363,12 @@ function render() {
                     <td style="color:var(--danger)">${p.renegades || 0}</td>
                 </tr>`).join('')}</tbody>
             </table>
-            <div style="display:flex; gap:10px; margin-top:20px;">
-                <button onclick="state.view='setup';render()" style="background:var(--accent);">Back</button>
-                <button onclick="clearAllStats()" style="background:var(--danger);">Reset Data</button>
+            
+            <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:20px;">
+                <button onclick="state.view='setup';render()" style="background:var(--accent); flex:1; min-width:80px;">Back</button>
+                <button onclick="exportStats()" style="background:#f39c12; flex:1; min-width:80px;">Export</button>
+                <button onclick="importStats()" style="background:#2ecc71; flex:1; min-width:80px;">Import</button>
+                <button onclick="clearAllStats()" style="background:var(--danger); flex:1; min-width:80px;">Reset</button>
             </div>
         </div>`;
         return;
@@ -437,8 +488,6 @@ function render() {
                 const t2Nil = h.t2.nils.some(n=>n);
                 const n1 = t1Nil ? (h.t1.nilGot === 0 ? " N✅" : " N❌") : "";
                 const n2 = t2Nil ? (h.t2.nilGot === 0 ? " N✅" : " N❌") : "";
-                
-                // Use boardSetThisRound instead of setThisRound
                 const p1 = (snap[0].penaltyThisRound ? "🎒" : "") + (snap[0].boardSetThisRound ? "❌" : "") + n1;
                 const p2 = (snap[1].penaltyThisRound ? "🎒" : "") + (snap[1].boardSetThisRound ? "❌" : "") + n2;
                 return `<tr><td>${i+1}</td><td>${h.t1.bid}/${h.t1.teamGot} ${p1}</td><td>${h.t2.bid}/${h.t2.teamGot} ${p2}</td></tr>`;
