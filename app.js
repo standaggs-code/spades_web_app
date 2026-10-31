@@ -7,7 +7,7 @@ const state = {
     players: initialState?.players || ['', '', '', ''],
     teamMode: initialState?.teamMode || 'random',
     goal: initialState?.goal || 300,
-    nilValue: 50,
+    nilValue: 100,
     bagLimit: initialState?.bagLimit || 10,
     bagPenalty: initialState?.bagPenalty || 100,
     setLimit: initialState?.setLimit || 3, 
@@ -44,25 +44,27 @@ function getTotalsAtStep(historyArray) {
             const oppHand = hands[i === 0 ? 1 : 0];
             team.penaltyThisRound = false;
             team.setThisRound = false;
+            
+            let failedNil = false;
+            let failedBid = false;
 
-            // Extract boolean if ANY player on the team went nil or reneged
             const teamIsNil = hand.nils.some(n => n);
             const teamReneg = hand.renegs.some(r => r);
             const oppReneg = oppHand.renegs.some(r => r);
 
-            // Nil Calculation
+            // 1. Nil Calculation
             if (teamIsNil) {
                 if (hand.nilGot === 0) {
                     team.score += state.nilValue;
                 } else { 
                     team.score -= state.nilValue; 
-                    team.score += hand.nilGot;
-                    team.bags += hand.nilGot;
+                    failedNil = true; 
                 }
             }
 
-            // Bid Calculation
-            const tricks = hand.teamGot - (teamIsNil ? hand.nilGot : 0);
+            // 2. Bid Calculation
+            const tricks = hand.teamGot; 
+            
             if (hand.bid > 0) {
                 if (tricks >= hand.bid && !teamReneg) {
                     const extras = tricks - hand.bid;
@@ -74,20 +76,25 @@ function getTotalsAtStep(historyArray) {
                     }
                 } else { 
                     team.score -= (hand.bid * 10); 
-                    team.setCount++; 
-                    team.setThisRound = true; 
+                    failedBid = true; 
                 }
-            } else if (!teamIsNil) { 
+            } else { 
                 team.score += tricks; 
                 team.bags += tricks; 
             }
 
-            // Bag Penalty (WITH BAG-OUT TRACKER)
+            // Apply Set Logic (Max 1 Set per hand)
+            if (failedNil || failedBid) {
+                team.setCount++;
+                team.setThisRound = true;
+            }
+
+            // 3. Bag Penalty
             if (team.bags >= state.bagLimit) { 
                 team.score -= (state.bagPenalty + state.bagLimit); 
                 team.bags -= state.bagLimit;
                 team.penaltyThisRound = true;
-                team.bagOuts++; // NEW: Track how many times they hit the limit
+                team.bagOuts++; 
             }
 
             // Streak Calculation
@@ -113,7 +120,6 @@ function calculateScores() {
     const s1 = state.teams[0].score;
     const s2 = state.teams[1].score;
 
-    // 0. The "Board" Rule
     if (state.firstHandRule && state.history.length > 0) {
         const firstHand = state.history[0];
         if (firstHand.t1.teamGot < 4) { state.winner = t2N; state.winReason = `${t1N} missed board (got ${firstHand.t1.teamGot}) on the first hand!`; }
@@ -121,31 +127,25 @@ function calculateScores() {
     }
 
     if (!state.winner) {
-        // 1. Back-to-Back Set Rule
         if (final[0].consecutiveSets >= 2) { state.winner = t2N; state.winReason = `${t1N} set twice in a row!`; }
         else if (final[1].consecutiveSets >= 2) { state.winner = t1N; state.winReason = `${t2N} set twice in a row!`; }
-        // 2. Total Set Limit Rule
         else if (state.teams[0].setCount >= state.setLimit) { state.winner = t2N; state.winReason = `${t1N} hit set limit (${state.setLimit}).`; }
         else if (state.teams[1].setCount >= state.setLimit) { state.winner = t1N; state.winReason = `${t2N} hit set limit (${state.setLimit}).`; }
-        // 3. Goal Check
         else if (s1 >= state.goal || s2 >= state.goal) {
             if (s1 > s2) { state.winner = t1N; state.winReason = "Goal reached!"; }
             else if (s2 > s1) { state.winner = t2N; state.winReason = "Goal reached!"; }
         }
     }
     
-    // --- ADVANCED CAREER STATS RECORDING ---
     if (state.winner && !state.statsRecorded) {
         let career = JSON.parse(localStorage.getItem('spades_career_stats')) || {};
         
-        // Initialize players safely
         state.players.forEach(name => {
             const n = name.trim(); if (!n) return;
             if (!career[n]) career[n] = { wins: 0, games: 0, sets: 0, bagOuts: 0, nilsAttempted: 0, nilsCaught: 0, renegades: 0 };
             career[n].games++;
         });
 
-        // Add Shared Team Stats
         state.winner.split(' & ').forEach(n => { if (career[n.trim()]) career[n.trim()].wins++; });
         state.teams.forEach((team, tIdx) => {
             team.members.forEach(n => { 
@@ -157,7 +157,6 @@ function calculateScores() {
             });
         });
 
-        // Add Individual Hand-by-Hand Stats
         state.history.forEach(round => {
             [round.t1, round.t2].forEach((hand, tIdx) => {
                 const teamMembers = state.teams[tIdx].members;
@@ -188,7 +187,6 @@ window.submitHand = () => {
     let t1G = parseInt(document.getElementById('t1Got').value) || 0;
     if (t0G + t1G !== 13) return alert("Total tricks must equal 13.");
     
-    // Get Renegades from specific players
     const t0R_P1 = document.getElementById('t0Reneg0')?.checked || false;
     const t0R_P2 = document.getElementById('t0Reneg1')?.checked || false;
     const t1R_P1 = document.getElementById('t1Reneg0')?.checked || false;
@@ -398,20 +396,24 @@ function render() {
                         ? `<input type="text" id="t${i}Bid" value="Auto" disabled style="background:#eee; text-align:center; color:#888;">`
                         : `<input type="number" id="t${i}Bid" placeholder="Bid">`;
                     
-                    // --- HYBRID UI FOR INDIVIDUAL STATS ---
+                    // --- GUI FIX: Explicit Flexbox formatting and width overrides for checkboxes ---
                     const nilUI = isFirstHandAuto ? `` : `
-                        <div style="font-size:0.75rem; margin-top:8px; border-top:1px solid var(--border); padding-top:5px;">
-                            <b>Nil?</b> 
-                            <label><input type="checkbox" id="t${i}Nil0"> ${getSingleInitial(team.members[0])}</label>
-                            <label><input type="checkbox" id="t${i}Nil1"> ${getSingleInitial(team.members[1])}</label>
-                            <input type="number" id="t${i}NilGot" placeholder="Got?" style="width:45px; padding:4px; margin-left:5px; margin-top:0;">
+                        <div style="font-size:0.75rem; margin-top:10px; border-top:1px solid var(--border); padding-top:10px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                                <b>Nil?</b> 
+                                <label style="display:flex; align-items:center; gap:4px; margin:0;"><input type="checkbox" id="t${i}Nil0" style="width:auto; margin:0;"> ${getSingleInitial(team.members[0])}</label>
+                                <label style="display:flex; align-items:center; gap:4px; margin:0;"><input type="checkbox" id="t${i}Nil1" style="width:auto; margin:0;"> ${getSingleInitial(team.members[1])}</label>
+                            </div>
+                            <div style="display:flex; justify-content:flex-end;">
+                                <input type="number" id="t${i}NilGot" placeholder="Got?" style="width:70px; padding:8px; margin:0; font-size:0.8rem;">
+                            </div>
                         </div>`;
                     
                     const renegUI = `
-                        <div style="font-size:0.75rem; margin-top:5px; color:var(--danger);">
+                        <div style="font-size:0.75rem; margin-top:10px; border-top:1px solid var(--border); padding-top:10px; color:var(--danger); display:flex; justify-content:space-between; align-items:center;">
                             <b>Renegade?</b> 
-                            <label><input type="checkbox" id="t${i}Reneg0"> ${getSingleInitial(team.members[0])}</label>
-                            <label><input type="checkbox" id="t${i}Reneg1"> ${getSingleInitial(team.members[1])}</label>
+                            <label style="display:flex; align-items:center; gap:4px; margin:0;"><input type="checkbox" id="t${i}Reneg0" style="width:auto; margin:0;"> ${getSingleInitial(team.members[0])}</label>
+                            <label style="display:flex; align-items:center; gap:4px; margin:0;"><input type="checkbox" id="t${i}Reneg1" style="width:auto; margin:0;"> ${getSingleInitial(team.members[1])}</label>
                         </div>`;
 
                     return `<div><b>${getInitials(team.members)}</b>
